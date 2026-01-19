@@ -1,1 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Memory Vault</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- PIN SCREEN -->
+<div id="pin-screen" class="center">
+  <h1>💗 Memory Vault</h1>
+  <p>Enter PIN</p>
+  <input type="password" id="pin-input" maxlength="4" />
+  <button id="pin-btn">Unlock</button>
+  <p id="pin-error"></p>
+</div>
+
+<!-- GALLERY SCREEN -->
+<div id="gallery-screen" class="hidden">
+  <header>
+    <h2>📸 Memories</h2>
+    <button id="upload-btn" class="admin-only hidden">Upload</button>
+  </header>
+
+  <div id="gallery"></div>
+</div>
+
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
 
