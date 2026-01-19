@@ -11,14 +11,16 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 10px;
 }
 
 input {
   padding: 10px;
   font-size: 18px;
-  width: 120px;
+  width: 140px;
   text-align: center;
-  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
 }
 
 button {
@@ -27,7 +29,7 @@ button {
   background: #f28fb3;
   color: white;
   font-size: 16px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -39,16 +41,58 @@ button:hover {
   display: none;
 }
 
-header {
+.error {
+  color: #b00020;
+  font-size: 14px;
+}
+
+.topbar {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 16px;
+  position: sticky;
+  top: 0;
+  background: #f8dde6;
 }
 
 #gallery {
+  padding-bottom: 30px;
+}
+
+.section-title {
+  margin: 18px 12px 0;
+  font-size: 18px;
+}
+
+.grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
   padding: 12px;
 }
 
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+.card img, .card video {
+  width: 100%;
+  border-radius: 10px;
+}
+
+.caption {
+  margin: 8px 0 6px;
+  font-size: 14px;
+}
+
+.dl {
+  display: inline-block;
+  text-decoration: none;
+  color: #d23a77;
+  font-weight: bold;
+  font-size: 14px;
+}
