@@ -1,3 +1,6 @@
+alert("app.js loaded");
+
+
 const pinBtn = document.getElementById("pin-btn");
 const pinInput = document.getElementById("pin-input");
 const pinError = document.getElementById("pin-error");
