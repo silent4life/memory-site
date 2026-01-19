@@ -13,6 +13,7 @@ const fileList = document.getElementById("file-list");
 const statusEl = document.getElementById("upload-status");
 
 let storachaClient = null;
+let currentSpace = null;
 
 // ---------- helpers ----------
 function setStatus(msg) {
@@ -23,52 +24,52 @@ function isAdmin() {
   return sessionStorage.getItem("isAdmin") === "true";
 }
 
-function loadSavedConfig() {
-  const email = localStorage.getItem("mv_admin_email") || "";
-  const spaceDid = localStorage.getItem("mv_space_did") || "";
-  emailInput.value = email;
-  spaceDidInput.value = spaceDid;
-}
-
-// ✅ URL builder: https://<CID>.ipfs.w3s.link/<filename>
 function buildGatewayUrl(cid, filename) {
   const safeName = encodeURIComponent(filename);
   return `https://${cid}.ipfs.w3s.link/${safeName}`;
 }
 
-async function ensureStorachaClient() {
-  if (!storachaClient) storachaClient = await create();
+async function ensureClient() {
+  if (!storachaClient) {
+    storachaClient = await create();
+  }
   return storachaClient;
 }
 
+// ---------- AUTH ----------
 async function loginStoracha(email) {
-  const client = await ensureStorachaClient();
-  setStatus("Sending login email… check inbox and click confirmation link.");
+  const client = await ensureClient();
+  setStatus("Sending login email… confirm and return here.");
   await client.login(email);
   setStatus("Storacha login confirmed ✅");
 }
 
-async function setSpace(spaceDid) {
-  const client = await ensureStorachaClient();
-  await client.setCurrentSpace(spaceDid);
+// ✅ FIX: resolve space from authorized list
+async function resolveSpace(spaceDid) {
+  const client = await ensureClient();
+
+  const spaces = await client.spaces(); // authorized spaces
+  const match = spaces.find(s => s.did() === spaceDid);
+
+  if (!match) {
+    throw new Error("This Space is not authorized for this email session.");
+  }
+
+  currentSpace = match;
+  await client.setCurrentSpace(match);
+
   setStatus("Space selected ✅");
 }
 
+// ---------- FILE HELPERS ----------
 async function getTakenAt(file) {
   try {
-    const isImage = file.type.startsWith("image/");
-    if (isImage && window.exifr) {
-      const exif = await window.exifr.parse(file, { translateValues: true });
-      const dt = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate;
-      if (dt instanceof Date && !isNaN(dt.getTime())) return dt;
-      if (typeof dt === "string") {
-        const parsed = new Date(dt);
-        if (!isNaN(parsed.getTime())) return parsed;
-      }
+    if (file.type.startsWith("image/") && window.exifr) {
+      const exif = await window.exifr.parse(file);
+      const dt = exif?.DateTimeOriginal || exif?.CreateDate;
+      if (dt) return new Date(dt);
     }
-  } catch (e) {
-    console.warn("EXIF parse failed:", e);
-  }
+  } catch {}
   return new Date(file.lastModified || Date.now());
 }
 
@@ -76,158 +77,88 @@ function fileTypeFromMime(file) {
   return file.type.startsWith("video/") ? "video" : "photo";
 }
 
-function clearFileList() {
-  fileList.innerHTML = "";
-}
-
 function renderSelectedFiles(files) {
-  clearFileList();
+  fileList.innerHTML = "";
   for (const file of files) {
     const div = document.createElement("div");
     div.className = "file-item";
     div.dataset.filename = file.name;
-
     div.innerHTML = `
-      <div><strong>${file.name}</strong></div>
-      <small>${file.type || "unknown"} • ${(file.size / (1024 * 1024)).toFixed(2)} MB</small>
-      <input class="caption-input" type="text" placeholder="Caption (optional)"/>
+      <strong>${file.name}</strong>
+      <small>${file.type} • ${(file.size / 1024 / 1024).toFixed(2)} MB</small>
+      <input class="caption-input" placeholder="Caption (optional)" />
     `;
     fileList.appendChild(div);
   }
 }
 
-function getCaptionForFilename(filename) {
-  const item = [...document.querySelectorAll(".file-item")].find(x => x.dataset.filename === filename);
-  if (!item) return "";
-  const input = item.querySelector(".caption-input");
-  return (input?.value || "").trim();
+function getCaption(filename) {
+  const el = [...document.querySelectorAll(".file-item")]
+    .find(x => x.dataset.filename === filename);
+  return el?.querySelector("input")?.value?.trim() || null;
 }
 
-// ---------- init ----------
-loadSavedConfig();
-
-// ---------- events ----------
+// ---------- EVENTS ----------
 loginBtn.addEventListener("click", async () => {
   try {
-    if (!isAdmin()) {
-      setStatus("Admin only. Use Admin PIN to unlock upload.");
-      return;
-    }
-
+    if (!isAdmin()) return setStatus("Admin only.");
     const email = emailInput.value.trim();
-    if (!email) {
-      setStatus("Enter your admin email first.");
-      return;
-    }
-
+    if (!email) return setStatus("Enter admin email.");
     localStorage.setItem("mv_admin_email", email);
     await loginStoracha(email);
   } catch (e) {
     console.error(e);
-    setStatus("Login failed. Check console.");
+    setStatus("Login failed.");
   }
 });
 
 saveSpaceBtn.addEventListener("click", async () => {
   try {
-    if (!isAdmin()) {
-      setStatus("Admin only. Use Admin PIN to unlock upload.");
-      return;
-    }
-
-    const spaceDid = spaceDidInput.value.trim();
-    if (!spaceDid.startsWith("did:")) {
-      setStatus("Space DID must start with: did: ...");
-      return;
-    }
-
-    localStorage.setItem("mv_space_did", spaceDid);
-    await setSpace(spaceDid);
+    if (!isAdmin()) return setStatus("Admin only.");
+    const did = spaceDidInput.value.trim();
+    if (!did.startsWith("did:")) return setStatus("Invalid Space DID.");
+    localStorage.setItem("mv_space_did", did);
+    await resolveSpace(did);
   } catch (e) {
     console.error(e);
-    setStatus("Could not set Space. Check console.");
+    setStatus(e.message || "Could not set Space.");
   }
 });
 
 fileInput.addEventListener("change", () => {
-  const files = fileInput.files ? Array.from(fileInput.files) : [];
-  if (files.length === 0) {
-    clearFileList();
-    setStatus("");
-    return;
-  }
+  const files = [...fileInput.files];
   renderSelectedFiles(files);
-  setStatus(`${files.length} file(s) selected.`);
 });
 
 startUploadBtn.addEventListener("click", async () => {
   try {
-    if (!isAdmin()) {
-      setStatus("Admin only. Use Admin PIN to unlock upload.");
-      return;
-    }
+    if (!isAdmin()) return setStatus("Admin only.");
+    if (!currentSpace) return setStatus("Select Space first.");
 
-    const files = fileInput.files ? Array.from(fileInput.files) : [];
-    if (files.length === 0) {
-      setStatus("Choose files first.");
-      return;
-    }
-
-    const email = (emailInput.value || "").trim();
-    const spaceDid = (spaceDidInput.value || "").trim();
-
-    if (!email) {
-      setStatus("Enter admin email and click Login first.");
-      return;
-    }
-    if (!spaceDid) {
-      setStatus("Paste your Space DID and click Save Space first.");
-      return;
-    }
-    if (!window.supabaseClient) {
-      setStatus("Supabase not connected. Check supabase.js.");
-      return;
-    }
-
-    await ensureStorachaClient();
-    await loginStoracha(email);
-    await setSpace(spaceDid);
+    const files = [...fileInput.files];
+    if (!files.length) return setStatus("Choose files.");
 
     setStatus("Uploading…");
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const caption = getCaptionForFilename(file.name);
+    for (const file of files) {
       const takenAt = await getTakenAt(file);
-
-      setStatus(`Uploading ${i + 1}/${files.length}: ${file.name}`);
+      const caption = getCaption(file.name);
 
       const cid = await storachaClient.uploadFile(file);
-      const fileUrl = buildGatewayUrl(cid, file.name);
+      const url = buildGatewayUrl(cid, file.name);
 
-      const { error } = await window.supabaseClient
-        .from("memories")
-        .insert([{
-          file_url: fileUrl,
-          file_type: fileTypeFromMime(file),
-          caption: caption || null,
-          taken_at: takenAt.toISOString()
-        }]);
-
-      if (error) {
-        console.error("Supabase insert error:", error);
-        setStatus("Uploaded to Storacha, but failed saving metadata to Supabase (check console).");
-        return;
-      }
+      await window.supabaseClient.from("memories").insert([{
+        file_url: url,
+        file_type: fileTypeFromMime(file),
+        caption,
+        taken_at: takenAt.toISOString()
+      }]);
     }
 
-    setStatus("All uploads complete ✅");
+    setStatus("Upload complete ✅");
     fileInput.value = "";
-    clearFileList();
-
-    if (typeof window.loadMemories === "function") {
-      await window.loadMemories();
-    }
+    fileList.innerHTML = "";
+    await window.loadMemories();
   } catch (e) {
     console.error(e);
     setStatus("Upload failed. Check console.");
