@@ -21,16 +21,49 @@
 <div id="gallery-screen" class="hidden">
   <header class="topbar">
     <h2>📸 Memories</h2>
-    <button id="upload-btn" class="hidden">Upload</button>
+    <button id="upload-btn" class="admin-only">Upload</button>
   </header>
+
+  <!-- Upload Panel -->
+  <section id="upload-panel" class="hidden panel">
+    <h3>⬆ Upload memories</h3>
+
+    <div class="row">
+      <label class="label">Admin email (Storacha login)</label>
+      <input id="admin-email" type="email" placeholder="you@example.com" />
+      <button id="login-storacha-btn" class="secondary">Login</button>
+    </div>
+
+    <div class="row">
+      <label class="label">Storacha Space DID</label>
+      <input id="space-did" type="text" placeholder="did:key:..." />
+      <button id="save-space-btn" class="secondary">Save Space</button>
+    </div>
+
+    <div class="row">
+      <input id="file-input" type="file" multiple />
+      <button id="start-upload-btn">Upload Selected</button>
+    </div>
+
+    <div id="file-list" class="file-list"></div>
+    <p id="upload-status" class="muted"></p>
+  </section>
 
   <div id="gallery"></div>
 </div>
 
-<!-- Scripts MUST be in this order -->
+<!-- Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- EXIF reader (photo timestamp) -->
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
+
+<!-- Your scripts -->
 <script src="./supabase.js"></script>
 <script src="./app.js"></script>
+
+<!-- Upload module -->
+<script type="module" src="./upload.js"></script>
 
 </body>
 </html>
