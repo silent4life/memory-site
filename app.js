@@ -1,5 +1,9 @@
 const pinBtn = document.getElementById("pin-btn");
 const pinInput = document.getElementById("pin-input");
+
+const adminPinBtn = document.getElementById("admin-pin-btn");
+const adminPinInput = document.getElementById("admin-pin-input");
+
 const pinError = document.getElementById("pin-error");
 
 const pinScreen = document.getElementById("pin-screen");
@@ -17,7 +21,15 @@ async function sha256(text) {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Load memories from Supabase and render timeline
+function setAdminUI(isAdmin) {
+  if (isAdmin) {
+    uploadBtn.classList.remove("hidden");
+  } else {
+    uploadBtn.classList.add("hidden");
+    uploadPanel.classList.add("hidden");
+  }
+}
+
 async function loadMemories() {
   gallery.innerHTML = "<p style='padding:12px;'>Loading memories…</p>";
 
@@ -33,11 +45,10 @@ async function loadMemories() {
   }
 
   if (!data || data.length === 0) {
-    gallery.innerHTML = "<p style='padding:12px;'>No memories yet. Upload your first one ❤️</p>";
+    gallery.innerHTML = "<p style='padding:12px;'>No memories yet ❤️</p>";
     return;
   }
 
-  // Group by Month-Year
   const groups = {};
   for (const m of data) {
     const d = new Date(m.taken_at);
@@ -84,12 +95,12 @@ async function loadMemories() {
   }
 }
 
-// Toggle upload panel
+// Toggle upload panel (admin only)
 uploadBtn.addEventListener("click", () => {
   uploadPanel.classList.toggle("hidden");
 });
 
-// PIN unlock
+// Viewer unlock
 pinBtn.addEventListener("click", async () => {
   try {
     pinError.textContent = "";
@@ -100,11 +111,6 @@ pinBtn.addEventListener("click", async () => {
       return;
     }
 
-    if (!window.supabaseClient) {
-      pinError.textContent = "Supabase not connected. Check supabase.js";
-      return;
-    }
-
     const { data, error } = await window.supabaseClient
       .from("settings")
       .select("value")
@@ -112,23 +118,24 @@ pinBtn.addEventListener("click", async () => {
       .single();
 
     if (error || !data) {
-      pinError.textContent = "Could not check PIN (database issue).";
+      pinError.textContent = "Database issue while checking PIN.";
       console.error(error);
       return;
     }
 
-    const storedHash = data.value;
     const enteredHash = await sha256(pin);
-
-    if (enteredHash !== storedHash) {
+    if (enteredHash !== data.value) {
       pinError.textContent = "Wrong PIN";
       return;
     }
 
     sessionStorage.setItem("unlocked", "true");
+    sessionStorage.setItem("isAdmin", "false");
+
     pinScreen.classList.add("hidden");
     galleryScreen.classList.remove("hidden");
 
+    setAdminUI(false);
     await loadMemories();
   } catch (e) {
     pinError.textContent = "Something went wrong. Check console.";
@@ -136,5 +143,48 @@ pinBtn.addEventListener("click", async () => {
   }
 });
 
-// Make loadMemories available to upload.js
+// Admin unlock
+adminPinBtn.addEventListener("click", async () => {
+  try {
+    pinError.textContent = "";
+    const pin = adminPinInput.value.trim();
+
+    if (!/^\d{4}$/.test(pin)) {
+      pinError.textContent = "Admin PIN must be exactly 4 digits";
+      return;
+    }
+
+    const { data, error } = await window.supabaseClient
+      .from("settings")
+      .select("value")
+      .eq("key", "admin_pin_hash")
+      .single();
+
+    if (error || !data) {
+      pinError.textContent = "Database issue while checking Admin PIN.";
+      console.error(error);
+      return;
+    }
+
+    const enteredHash = await sha256(pin);
+    if (enteredHash !== data.value) {
+      pinError.textContent = "Wrong Admin PIN";
+      return;
+    }
+
+    sessionStorage.setItem("unlocked", "true");
+    sessionStorage.setItem("isAdmin", "true");
+
+    pinScreen.classList.add("hidden");
+    galleryScreen.classList.remove("hidden");
+
+    setAdminUI(true);
+    await loadMemories();
+  } catch (e) {
+    pinError.textContent = "Something went wrong. Check console.";
+    console.error(e);
+  }
+});
+
+// Expose for upload.js
 window.loadMemories = loadMemories;
