@@ -1,6 +1,3 @@
-// upload.js (ESM module)
-// Full updated version with URL builder using: https://<CID>.ipfs.w3s.link/<filename>
-
 import { create } from "https://esm.sh/@storacha/client@latest";
 
 const emailInput = document.getElementById("admin-email");
@@ -22,8 +19,8 @@ function setStatus(msg) {
   statusEl.textContent = msg || "";
 }
 
-function isUnlocked() {
-  return sessionStorage.getItem("unlocked") === "true";
+function isAdmin() {
+  return sessionStorage.getItem("isAdmin") === "true";
 }
 
 function loadSavedConfig() {
@@ -33,8 +30,7 @@ function loadSavedConfig() {
   spaceDidInput.value = spaceDid;
 }
 
-// ✅ URL builder (matches what you pasted)
-// Example: https://bafy...ipfs.w3s.link/IMG_1234.jpg
+// ✅ URL builder: https://<CID>.ipfs.w3s.link/<filename>
 function buildGatewayUrl(cid, filename) {
   const safeName = encodeURIComponent(filename);
   return `https://${cid}.ipfs.w3s.link/${safeName}`;
@@ -48,7 +44,7 @@ async function ensureStorachaClient() {
 async function loginStoracha(email) {
   const client = await ensureStorachaClient();
   setStatus("Sending login email… check inbox and click confirmation link.");
-  await client.login(email); // waits for login confirmation
+  await client.login(email);
   setStatus("Storacha login confirmed ✅");
 }
 
@@ -58,20 +54,13 @@ async function setSpace(spaceDid) {
   setStatus("Space selected ✅");
 }
 
-// Photo timestamp from EXIF; fallback to file.lastModified (and upload time)
 async function getTakenAt(file) {
-  // Prefer EXIF for images
   try {
     const isImage = file.type.startsWith("image/");
     if (isImage && window.exifr) {
       const exif = await window.exifr.parse(file, { translateValues: true });
-      const dt =
-        exif?.DateTimeOriginal ||
-        exif?.CreateDate ||
-        exif?.ModifyDate;
-
+      const dt = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate;
       if (dt instanceof Date && !isNaN(dt.getTime())) return dt;
-
       if (typeof dt === "string") {
         const parsed = new Date(dt);
         if (!isNaN(parsed.getTime())) return parsed;
@@ -80,10 +69,7 @@ async function getTakenAt(file) {
   } catch (e) {
     console.warn("EXIF parse failed:", e);
   }
-
-  // Fallback: lastModified works for many videos
-  const fallback = file.lastModified ? new Date(file.lastModified) : new Date();
-  return fallback;
+  return new Date(file.lastModified || Date.now());
 }
 
 function fileTypeFromMime(file) {
@@ -106,7 +92,6 @@ function renderSelectedFiles(files) {
       <small>${file.type || "unknown"} • ${(file.size / (1024 * 1024)).toFixed(2)} MB</small>
       <input class="caption-input" type="text" placeholder="Caption (optional)"/>
     `;
-
     fileList.appendChild(div);
   }
 }
@@ -124,7 +109,10 @@ loadSavedConfig();
 // ---------- events ----------
 loginBtn.addEventListener("click", async () => {
   try {
-    if (!isUnlocked()) return;
+    if (!isAdmin()) {
+      setStatus("Admin only. Use Admin PIN to unlock upload.");
+      return;
+    }
 
     const email = emailInput.value.trim();
     if (!email) {
@@ -142,7 +130,10 @@ loginBtn.addEventListener("click", async () => {
 
 saveSpaceBtn.addEventListener("click", async () => {
   try {
-    if (!isUnlocked()) return;
+    if (!isAdmin()) {
+      setStatus("Admin only. Use Admin PIN to unlock upload.");
+      return;
+    }
 
     const spaceDid = spaceDidInput.value.trim();
     if (!spaceDid.startsWith("did:")) {
@@ -171,7 +162,10 @@ fileInput.addEventListener("change", () => {
 
 startUploadBtn.addEventListener("click", async () => {
   try {
-    if (!isUnlocked()) return;
+    if (!isAdmin()) {
+      setStatus("Admin only. Use Admin PIN to unlock upload.");
+      return;
+    }
 
     const files = fileInput.files ? Array.from(fileInput.files) : [];
     if (files.length === 0) {
@@ -195,7 +189,6 @@ startUploadBtn.addEventListener("click", async () => {
       return;
     }
 
-    // Make sure client exists, logged in, and space selected
     await ensureStorachaClient();
     await loginStoracha(email);
     await setSpace(spaceDid);
@@ -209,13 +202,9 @@ startUploadBtn.addEventListener("click", async () => {
 
       setStatus(`Uploading ${i + 1}/${files.length}: ${file.name}`);
 
-      // Upload file -> returns CID
       const cid = await storachaClient.uploadFile(file);
-
-      // ✅ Build public URL using the CID + filename
       const fileUrl = buildGatewayUrl(cid, file.name);
 
-      // Save metadata to Supabase
       const { error } = await window.supabaseClient
         .from("memories")
         .insert([{
@@ -233,12 +222,9 @@ startUploadBtn.addEventListener("click", async () => {
     }
 
     setStatus("All uploads complete ✅");
-
-    // Reset UI
     fileInput.value = "";
     clearFileList();
 
-    // Refresh gallery
     if (typeof window.loadMemories === "function") {
       await window.loadMemories();
     }
