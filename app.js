@@ -1,5 +1,5 @@
+// TEMP debug (remove later)
 alert("app.js loaded");
-
 
 const pinBtn = document.getElementById("pin-btn");
 const pinInput = document.getElementById("pin-input");
@@ -8,7 +8,6 @@ const pinError = document.getElementById("pin-error");
 const pinScreen = document.getElementById("pin-screen");
 const galleryScreen = document.getElementById("gallery-screen");
 
-// Hash helper (SHA-256)
 async function sha256(text) {
   const data = new TextEncoder().encode(text);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -25,8 +24,12 @@ pinBtn.addEventListener("click", async () => {
     return;
   }
 
-  // 1) fetch stored hash from Supabase
-  const { data, error } = await window.supabase
+  if (!window.supabaseClient) {
+    pinError.textContent = "Supabase not connected. Check supabase.js + script order.";
+    return;
+  }
+
+  const { data, error } = await window.supabaseClient
     .from("settings")
     .select("value")
     .eq("key", "pin_hash")
@@ -39,8 +42,6 @@ pinBtn.addEventListener("click", async () => {
   }
 
   const storedHash = data.value;
-
-  // 2) hash entered PIN and compare
   const enteredHash = await sha256(pin);
 
   if (enteredHash !== storedHash) {
@@ -48,9 +49,7 @@ pinBtn.addEventListener("click", async () => {
     return;
   }
 
-  // 3) unlock session
   sessionStorage.setItem("unlocked", "true");
   pinScreen.classList.add("hidden");
   galleryScreen.classList.remove("hidden");
 });
-
