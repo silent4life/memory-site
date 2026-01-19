@@ -1,12 +1,7 @@
 // upload.js (ESM module)
+// Full updated version with URL builder using: https://<CID>.ipfs.w3s.link/<filename>
 
-// Import Storacha client in browser via ESM CDN.
-// This follows Storacha docs: persistent browser client can login via email,
-// then select a Space and upload with uploadFile. :contentReference[oaicite:2]{index=2}
 import { create } from "https://esm.sh/@storacha/client@latest";
-
-const uploadPanel = document.getElementById("upload-panel");
-const uploadBtn = document.getElementById("upload-btn");
 
 const emailInput = document.getElementById("admin-email");
 const loginBtn = document.getElementById("login-storacha-btn");
@@ -16,6 +11,7 @@ const saveSpaceBtn = document.getElementById("save-space-btn");
 
 const fileInput = document.getElementById("file-input");
 const startUploadBtn = document.getElementById("start-upload-btn");
+
 const fileList = document.getElementById("file-list");
 const statusEl = document.getElementById("upload-status");
 
@@ -23,7 +19,7 @@ let storachaClient = null;
 
 // ---------- helpers ----------
 function setStatus(msg) {
-  statusEl.textContent = msg;
+  statusEl.textContent = msg || "";
 }
 
 function isUnlocked() {
@@ -37,6 +33,13 @@ function loadSavedConfig() {
   spaceDidInput.value = spaceDid;
 }
 
+// ✅ URL builder (matches what you pasted)
+// Example: https://bafy...ipfs.w3s.link/IMG_1234.jpg
+function buildGatewayUrl(cid, filename) {
+  const safeName = encodeURIComponent(filename);
+  return `https://${cid}.ipfs.w3s.link/${safeName}`;
+}
+
 async function ensureStorachaClient() {
   if (!storachaClient) storachaClient = await create();
   return storachaClient;
@@ -44,8 +47,8 @@ async function ensureStorachaClient() {
 
 async function loginStoracha(email) {
   const client = await ensureStorachaClient();
-  setStatus("Sending login email… check your inbox and click the confirmation link.");
-  await client.login(email); // resolves after email confirmation :contentReference[oaicite:3]{index=3}
+  setStatus("Sending login email… check inbox and click confirmation link.");
+  await client.login(email); // waits for login confirmation
   setStatus("Storacha login confirmed ✅");
 }
 
@@ -55,9 +58,9 @@ async function setSpace(spaceDid) {
   setStatus("Space selected ✅");
 }
 
-// Photo timestamp from EXIF; fallback to file.lastModified.
-// EXIF is the desired source for real memory date/time. :contentReference[oaicite:4]{index=4}
+// Photo timestamp from EXIF; fallback to file.lastModified (and upload time)
 async function getTakenAt(file) {
+  // Prefer EXIF for images
   try {
     const isImage = file.type.startsWith("image/");
     if (isImage && window.exifr) {
@@ -68,25 +71,19 @@ async function getTakenAt(file) {
         exif?.ModifyDate;
 
       if (dt instanceof Date && !isNaN(dt.getTime())) return dt;
+
       if (typeof dt === "string") {
         const parsed = new Date(dt);
         if (!isNaN(parsed.getTime())) return parsed;
       }
     }
   } catch (e) {
-    // ignore and fallback
     console.warn("EXIF parse failed:", e);
   }
 
-  // Fallback (also used for many videos in browsers)
-  return new Date(file.lastModified || Date.now());
-}
-
-// Storacha gateways: Storacha docs show path-style gateway URLs like:
-// https://storacha.link/ipfs/<cid>/<filename> :contentReference[oaicite:5]{index=5}
-function buildGatewayUrl(rootCid, filename) {
-  const safeName = encodeURIComponent(filename);
-  return `https://storacha.link/ipfs/${rootCid}/${safeName}`;
+  // Fallback: lastModified works for many videos
+  const fallback = file.lastModified ? new Date(file.lastModified) : new Date();
+  return fallback;
 }
 
 function fileTypeFromMime(file) {
@@ -97,7 +94,6 @@ function clearFileList() {
   fileList.innerHTML = "";
 }
 
-// Create UI list with caption inputs for each file
 function renderSelectedFiles(files) {
   clearFileList();
   for (const file of files) {
@@ -110,6 +106,7 @@ function renderSelectedFiles(files) {
       <small>${file.type || "unknown"} • ${(file.size / (1024 * 1024)).toFixed(2)} MB</small>
       <input class="caption-input" type="text" placeholder="Caption (optional)"/>
     `;
+
     fileList.appendChild(div);
   }
 }
@@ -121,9 +118,10 @@ function getCaptionForFilename(filename) {
   return (input?.value || "").trim();
 }
 
-// ---------- events ----------
+// ---------- init ----------
 loadSavedConfig();
 
+// ---------- events ----------
 loginBtn.addEventListener("click", async () => {
   try {
     if (!isUnlocked()) return;
@@ -133,8 +131,8 @@ loginBtn.addEventListener("click", async () => {
       setStatus("Enter your admin email first.");
       return;
     }
-    localStorage.setItem("mv_admin_email", email);
 
+    localStorage.setItem("mv_admin_email", email);
     await loginStoracha(email);
   } catch (e) {
     console.error(e);
@@ -151,8 +149,8 @@ saveSpaceBtn.addEventListener("click", async () => {
       setStatus("Space DID must start with: did: ...");
       return;
     }
-    localStorage.setItem("mv_space_did", spaceDid);
 
+    localStorage.setItem("mv_space_did", spaceDid);
     await setSpace(spaceDid);
   } catch (e) {
     console.error(e);
@@ -192,11 +190,13 @@ startUploadBtn.addEventListener("click", async () => {
       setStatus("Paste your Space DID and click Save Space first.");
       return;
     }
+    if (!window.supabaseClient) {
+      setStatus("Supabase not connected. Check supabase.js.");
+      return;
+    }
 
-    // Ensure storacha client is ready and space selected
+    // Make sure client exists, logged in, and space selected
     await ensureStorachaClient();
-    // If not yet logged in, login will trigger and wait for confirmation.
-    // If already logged in (persisted), this is quick. :contentReference[oaicite:6]{index=6}
     await loginStoracha(email);
     await setSpace(spaceDid);
 
@@ -209,18 +209,18 @@ startUploadBtn.addEventListener("click", async () => {
 
       setStatus(`Uploading ${i + 1}/${files.length}: ${file.name}`);
 
-      // Upload single file; returns a root CID (often a directory wrapper)
-      const rootCid = await storachaClient.uploadFile(file); // :contentReference[oaicite:7]{index=7}
+      // Upload file -> returns CID
+      const cid = await storachaClient.uploadFile(file);
 
-      const url = buildGatewayUrl(rootCid, file.name);
-      const type = fileTypeFromMime(file);
+      // ✅ Build public URL using the CID + filename
+      const fileUrl = buildGatewayUrl(cid, file.name);
 
-      // Insert metadata into Supabase
+      // Save metadata to Supabase
       const { error } = await window.supabaseClient
         .from("memories")
         .insert([{
-          file_url: url,
-          file_type: type,
+          file_url: fileUrl,
+          file_type: fileTypeFromMime(file),
           caption: caption || null,
           taken_at: takenAt.toISOString()
         }]);
