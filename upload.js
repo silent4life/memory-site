@@ -13,7 +13,7 @@ const fileList = document.getElementById("file-list");
 const statusEl = document.getElementById("upload-status");
 
 let storachaClient = null;
-let currentSpace = null;
+let currentSpaceDid = null;
 
 // ---------- helpers ----------
 function setStatus(msg) {
@@ -34,6 +34,7 @@ async function ensureClient() {
   return storachaClient;
 }
 
+// ---------- debug UI (space list) ----------
 function ensureDebugUI() {
   let box = document.getElementById("space-debug");
   if (box) return box;
@@ -64,7 +65,7 @@ function renderSpaces(spaces) {
   }
 
   for (const s of spaces) {
-    const did = typeof s.did === "function" ? s.did() : (s.did || "");
+    const did = typeof s.did === "function" ? s.did() : s.did;
     const name = typeof s.name === "function" ? s.name() : (s.name || "Unnamed space");
 
     const btn = document.createElement("button");
@@ -82,9 +83,14 @@ function renderSpaces(spaces) {
     btn.addEventListener("click", async () => {
       try {
         const client = await ensureClient();
-        await client.setCurrentSpace(s);
-        currentSpace = s;
+
+        // ✅ IMPORTANT: setCurrentSpace needs a DID string
+        await client.setCurrentSpace(did);
+
+        currentSpaceDid = did;
         spaceDidInput.value = did;
+        localStorage.setItem("mv_space_did", did);
+
         setStatus("Space selected ✅ (clicked from list)");
       } catch (e) {
         console.error(e);
@@ -102,7 +108,6 @@ async function loginStoracha(email) {
 
   setStatus("Sending login email… confirm and return here.");
   await client.login(email);
-  setStatus("Storacha login confirmed ✅");
 
   // After login, list spaces visible to this session
   try {
@@ -115,25 +120,19 @@ async function loginStoracha(email) {
   }
 }
 
-// Manual DID selection (tries to match visible spaces)
 async function selectSpaceByDid(spaceDid) {
   const client = await ensureClient();
-  const spaces = await client.spaces();
-  renderSpaces(spaces);
 
-  const match = spaces.find(s => {
-    const did = typeof s.did === "function" ? s.did() : s.did;
-    return did === spaceDid;
-  });
+  // (Optional) show list for visibility
+  try {
+    const spaces = await client.spaces();
+    renderSpaces(spaces);
+  } catch {}
 
-  if (!match) {
-    throw new Error(
-      "That Space DID is not visible to this login session. You are likely logged into a different Storacha account/email."
-    );
-  }
+  // ✅ IMPORTANT: setCurrentSpace needs a DID string
+  await client.setCurrentSpace(spaceDid);
 
-  await client.setCurrentSpace(match);
-  currentSpace = match;
+  currentSpaceDid = spaceDid;
   setStatus("Space selected ✅");
 }
 
@@ -173,6 +172,15 @@ function getCaption(filename) {
     .find(x => x.dataset.filename === filename);
   return el?.querySelector("input")?.value?.trim() || null;
 }
+
+// ---------- LOAD SAVED ----------
+(function loadSaved() {
+  const email = localStorage.getItem("mv_admin_email") || "";
+  const did = localStorage.getItem("mv_space_did") || "";
+  emailInput.value = email;
+  spaceDidInput.value = did;
+  currentSpaceDid = did || null;
+})();
 
 // ---------- EVENTS ----------
 loginBtn.addEventListener("click", async () => {
@@ -215,12 +223,17 @@ fileInput.addEventListener("change", () => {
 startUploadBtn.addEventListener("click", async () => {
   try {
     if (!isAdmin()) return setStatus("Admin only.");
-    if (!currentSpace) return setStatus("Select Space first (use Login, then click your space).");
+    if (!currentSpaceDid) return setStatus("Select Space first (Login, then click your space or Save Space).");
 
     const files = fileInput.files ? Array.from(fileInput.files) : [];
     if (!files.length) return setStatus("Choose files.");
 
     if (!window.supabaseClient) return setStatus("Supabase not connected. Check supabase.js.");
+
+    const client = await ensureClient();
+
+    // ✅ Ensure the correct space is selected before uploading
+    await client.setCurrentSpace(currentSpaceDid);
 
     setStatus("Uploading…");
 
@@ -228,7 +241,7 @@ startUploadBtn.addEventListener("click", async () => {
       const takenAt = await getTakenAt(file);
       const caption = getCaption(file.name);
 
-      const cid = await storachaClient.uploadFile(file);
+      const cid = await client.uploadFile(file);
       const url = buildGatewayUrl(cid, file.name);
 
       const { error } = await window.supabaseClient.from("memories").insert([{
