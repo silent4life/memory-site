@@ -6,6 +6,9 @@ const pinScreen = document.getElementById("pin-screen");
 const galleryScreen = document.getElementById("gallery-screen");
 const gallery = document.getElementById("gallery");
 
+const uploadBtn = document.getElementById("upload-btn");
+const uploadPanel = document.getElementById("upload-panel");
+
 // Hash helper (SHA-256)
 async function sha256(text) {
   const data = new TextEncoder().encode(text);
@@ -30,7 +33,7 @@ async function loadMemories() {
   }
 
   if (!data || data.length === 0) {
-    gallery.innerHTML = "<p style='padding:12px;'>No memories yet. Add your first one ❤️</p>";
+    gallery.innerHTML = "<p style='padding:12px;'>No memories yet. Upload your first one ❤️</p>";
     return;
   }
 
@@ -39,7 +42,6 @@ async function loadMemories() {
   for (const m of data) {
     const d = new Date(m.taken_at);
     const groupKey = d.toLocaleString(undefined, { month: "long", year: "numeric" });
-
     if (!groups[groupKey]) groups[groupKey] = [];
     groups[groupKey].push(m);
   }
@@ -82,6 +84,11 @@ async function loadMemories() {
   }
 }
 
+// Toggle upload panel
+uploadBtn.addEventListener("click", () => {
+  uploadPanel.classList.toggle("hidden");
+});
+
 // PIN unlock
 pinBtn.addEventListener("click", async () => {
   try {
@@ -98,7 +105,6 @@ pinBtn.addEventListener("click", async () => {
       return;
     }
 
-    // Fetch stored PIN hash from Supabase
     const { data, error } = await window.supabaseClient
       .from("settings")
       .select("value")
@@ -119,15 +125,16 @@ pinBtn.addEventListener("click", async () => {
       return;
     }
 
-    // Unlock
     sessionStorage.setItem("unlocked", "true");
     pinScreen.classList.add("hidden");
     galleryScreen.classList.remove("hidden");
 
-    // Load memories
-    loadMemories();
+    await loadMemories();
   } catch (e) {
     pinError.textContent = "Something went wrong. Check console.";
     console.error(e);
   }
 });
+
+// Make loadMemories available to upload.js
+window.loadMemories = loadMemories;
