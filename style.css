@@ -12,13 +12,16 @@ body {
   justify-content: center;
   align-items: center;
   gap: 10px;
+  padding: 16px;
 }
 
 input {
   padding: 10px;
   font-size: 16px;
+  width: 220px;
   border-radius: 8px;
   border: 1px solid #ccc;
+  text-align: center;
 }
 
 button {
@@ -42,11 +45,20 @@ button.secondary {
 .error {
   color: #b00020;
   font-size: 14px;
+  max-width: 320px;
+  text-align: center;
 }
 
 .muted {
   color: #555;
   font-size: 14px;
+}
+
+.divider {
+  width: 280px;
+  height: 1px;
+  background: rgba(0,0,0,0.15);
+  margin: 10px 0;
 }
 
 .topbar {
