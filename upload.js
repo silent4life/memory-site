@@ -5,10 +5,10 @@
 // then saves public download URL + metadata into Supabase "memories".
 
 // ✅ 1) PASTE YOUR GOOGLE OAUTH CLIENT ID HERE (from Google Cloud Console)
-const GOOGLE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "713708721121-8rsqvrjooe0epcomgoaon8rkqk74tnc0.apps.googleusercontent.com";
 
 // ✅ 2) Drive scope: manage files this app creates/opens
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";    https://drive.google.com/drive/folders/1c-JgbNhNAm1hyheHr8Cr-cZpAkAEeY9R?usp=drive_link
 
 // --- UI elements ---
 const googleBtn = document.getElementById("google-signin-btn");
